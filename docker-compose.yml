@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  smartshopper-ui:
+    build: .
+    container_name: smartshopper-ui
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  smartshopper-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: smartshopper-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    restart: unless-stopped

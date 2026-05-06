@@ -1,0 +1,16 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY website/ ./website/
+COPY .env .
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s \
+  CMD curl -f http://localhost:8000/health || exit 1
+
+CMD ["sh", "-c", "cd /app/website && uvicorn api:app --host 0.0.0.0 --port 8000"]
