@@ -20,9 +20,27 @@ import re
 import json
 import os
 import dotenv
+
+# Prevent PyTorch from using too many threads and causing Out-Of-Memory (OOM) on Streamlit Cloud
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+try:
+    import torch
+    torch.set_num_threads(1)
+except ImportError:
+    pass
+
 from template import METADATA_FILTER_TEMPLATE
 
 dotenv.load_dotenv()
+
+def get_secret(key_name):
+    # Safely get secret from environment or Streamlit secrets
+    if key_name in os.environ:
+        return os.environ[key_name]
+    elif hasattr(st, "secrets") and key_name in st.secrets:
+        return st.secrets[key_name]
+    return ""  # Return empty string to prevent KeyError crash
 
 class ParaphraserPipeline:
     def __init__(self,chat_message_store):
@@ -31,7 +49,7 @@ class ParaphraserPipeline:
         # self.memory_writer = memory_writer
         self.pipeline = Pipeline()
         self.pipeline.add_component("prompt_builder",ChatPromptBuilder(variables=["query","memories"],required_variables=["query", "memories"],))
-        self.pipeline.add_component("generator", OpenAIChatGenerator(model="llama-3.3-70b-versatile", api_key=Secret.from_token(os.environ["GROQ_API_KEY"]), api_base_url="https://api.groq.com/openai/v1"))
+        self.pipeline.add_component("generator", OpenAIChatGenerator(model="llama-3.3-70b-versatile", api_key=Secret.from_token(get_secret("GROQ_API_KEY")), api_base_url="https://api.groq.com/openai/v1"))
         self.pipeline.add_component("memory_retriever", self.memory_retriever)
 
         self.pipeline.connect("prompt_builder.prompt", "generator.messages")
@@ -106,7 +124,7 @@ class MongoDBAtlas:
 @component
 class GetMaterials:
     def __init__(self):
-        self.db = MongoDBAtlas(os.environ['MONGO_CONNECTION_STRING'])
+        self.db = MongoDBAtlas(get_secret('MONGO_CONNECTION_STRING'))
     
     @component.output_types(materials=List[str])
     def run(self):
@@ -116,7 +134,7 @@ class GetMaterials:
 @component
 class GetCategories:
     def __init__(self):
-        self.db = MongoDBAtlas(os.environ['MONGO_CONNECTION_STRING'])
+        self.db = MongoDBAtlas(get_secret('MONGO_CONNECTION_STRING'))
     
     @component.output_types(categories=List[str])
     def run(self):
@@ -131,7 +149,7 @@ class RetrieveAndGenerateAnswerPipeline:
         self.pipeline.add_component("embedder", SentenceTransformersTextEmbedder())
         self.pipeline.add_component("retriever", MongoDBAtlasEmbeddingRetriever(document_store=document_store,top_k=10))
         self.pipeline.add_component("prompt_builder", ChatPromptBuilder(variables=["query","documents"],required_variables=["query", "documents"]))
-        self.pipeline.add_component("generator", OpenAIChatGenerator(model="llama-3.3-70b-versatile", api_key=Secret.from_token(os.environ["GROQ_API_KEY"]), api_base_url="https://api.groq.com/openai/v1"))
+        self.pipeline.add_component("generator", OpenAIChatGenerator(model="llama-3.3-70b-versatile", api_key=Secret.from_token(get_secret("GROQ_API_KEY")), api_base_url="https://api.groq.com/openai/v1"))
         # self.pipeline.add_component("chat_message_writer", ChatMessageWriter(chat_message_store))
         # self.pipeline.add_component("joiner", ListJoiner(List[ChatMessage]))
         
@@ -234,7 +252,7 @@ class MetaDataFilterPipeline:
         )
         self.pipeline.add_component("generator", OpenAIChatGenerator(
             model="llama-3.3-70b-versatile",
-            api_key=Secret.from_token(os.environ['GROQ_API_KEY']),
+            api_key=Secret.from_token(get_secret('GROQ_API_KEY')),
             api_base_url="https://api.groq.com/openai/v1"
         ))
         self.pipeline.connect("materials.materials", "prompt_builder.materials")
@@ -355,7 +373,7 @@ if __name__ == "__main__":
 
     if 'agent' not in st.session_state:
         st.session_state.agent = agent = Agent(
-            chat_generator = OpenAIChatGenerator(model="llama-3.3-70b-versatile", api_key=Secret.from_token(os.environ["GROQ_API_KEY"]), api_base_url="https://api.groq.com/openai/v1"),
+            chat_generator = OpenAIChatGenerator(model="llama-3.3-70b-versatile", api_key=Secret.from_token(get_secret("GROQ_API_KEY")), api_base_url="https://api.groq.com/openai/v1"),
             tools=[st.session_state.retrieve_and_generate_tool],
             system_prompt="""
             You are a helpful shop assistant that provides product recommendations.    
